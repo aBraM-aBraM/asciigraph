@@ -9,9 +9,10 @@ use ratatui::style::{Color, Style};
 use ratatui::widgets::{Paragraph, Tabs};
 use std::cmp::min;
 use std::io::Stderr;
+use strum::IntoEnumIterator;
+use strum_macros::{Display, EnumIter};
 
 struct App {
-    selected: SelectedTab,
     editor_mode: EditorMode,
     should_quit: bool,
     size: Rect,
@@ -20,20 +21,24 @@ struct App {
 }
 
 #[repr(usize)]
-#[derive(Copy, Clone)]
-enum SelectedTab {
-    Editor,
-    Help = 6,
-}
-
-#[derive(Copy, Clone)]
+#[derive(EnumIter, Display, Copy, Clone)]
 enum EditorMode {
+    #[strum(serialize = "Explore (Escape)")]
     Explore,
+    #[strum(serialize = "Choose (Space)")]
     Choose,
+    #[strum(serialize = "Rectangle (R)")]
     Rectangle,
+    #[strum(serialize = "Text (T)")]
     Text,
+    #[strum(serialize = "Line (L)")]
     Line,
+    #[strum(serialize = "Arrow (A)")]
     Arrow,
+    #[strum(serialize = "Help (?)")]
+    Help,
+    #[strum(serialize = "Quit (Q)")]
+    Quit,
 }
 
 fn update(app: &mut App) -> Result<()> {
@@ -41,10 +46,7 @@ fn update(app: &mut App) -> Result<()> {
         if let Key(key) = event::read()? {
             if key.kind == event::KeyEventKind::Press {
                 match key.code {
-                    KeyCode::Esc => {
-                        app.selected = SelectedTab::Editor;
-                        app.editor_mode = EditorMode::Explore;
-                    }
+                    KeyCode::Esc => app.editor_mode = EditorMode::Explore,
                     Char('r') => app.editor_mode = EditorMode::Rectangle,
                     Char('t') => app.editor_mode = EditorMode::Text,
                     Char('a') => app.editor_mode = EditorMode::Arrow,
@@ -62,7 +64,7 @@ fn update(app: &mut App) -> Result<()> {
                             app.y -= 1;
                         }
                     }
-                    Char('?') => app.selected = SelectedTab::Help,
+                    Char('?') => app.editor_mode = EditorMode::Help,
                     Char('q') => app.should_quit = true,
                     _ => {}
                 }
@@ -78,19 +80,14 @@ fn draw(app: &mut App, terminal: &mut Terminal<CrosstermBackend<Stderr>>) -> Res
         let bottom = size.height - 1;
         let style = Style::default().bg(Color::Magenta);
         f.render_widget(
-            Tabs::new(vec![
-                "editor (esc)",
-                "choose (space)",
-                "rectangle (r)",
-                "text (t)",
-                "line (l)",
-                "arrow (a)",
-                "help (?)",
-                "quit (q)",
-            ])
-                .select(app.selected.clone() as usize)
-                .style(style)
-                .highlight_style(Style::default().bg(Color::Black)),
+            Tabs::new(
+                EditorMode::iter()
+                    .map(|variant| variant.to_string())
+                    .collect::<Vec<String>>(),
+            )
+            .select(app.editor_mode as usize)
+            .style(style)
+            .highlight_style(Style::default().bg(Color::Black)),
             Rect::new(0, bottom, f.size().width - 1, 1),
         );
         let pos_str = format!("pos ({}, {})", app.x, app.y);
@@ -114,7 +111,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut terminal = Terminal::new(CrosstermBackend::new(std::io::stderr()))?;
     let mut app = App {
-        selected: SelectedTab::Editor,
         editor_mode: EditorMode::Explore,
         should_quit: false,
         size: terminal.size()?,
