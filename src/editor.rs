@@ -7,8 +7,6 @@ use strum_macros::{Display, EnumIter};
 pub enum EditorMode {
     #[strum(serialize = "Explore (Escape)")]
     Explore,
-    #[strum(serialize = "Choose (Space)")]
-    Choose,
     #[strum(serialize = "Rectangle (ctrl+R)")]
     Rectangle,
     #[strum(serialize = "Text (ctrl+T)")]
@@ -26,6 +24,7 @@ pub enum EditorMode {
 
 pub struct Editor {
     pub editor_mode: EditorMode,
+    pub selected: bool,
     buffer: Vec<Vec<char>>,
     current_position: (i16, i16),
     last_position: (i16, i16),
@@ -36,26 +35,37 @@ impl Editor {
         self.current_position.0 += offset.0;
         self.current_position.1 += offset.1;
 
-        let width = self.buffer.len();
-        let height = self.buffer[0].len();
-
-        self.current_position.0 = min(max(self.current_position.0, 0), width as i16);
-        self.current_position.1 = min(max(self.current_position.1, 0), height as i16);
+        self.current_position.0 = min(max(self.current_position.0, 0), self.width() as i16);
+        self.current_position.1 = min(max(self.current_position.1, 0), self.height() as i16);
     }
+
+    pub fn width(&self) -> usize {
+        self.buffer.len()
+    }
+
+    pub fn height(&self) -> usize {
+        self.buffer[0].len()
+    }
+
+
+    pub fn set_last_position(&mut self) {
+        self.last_position.0 = self.current_position.0;
+        self.last_position.1 = self.current_position.1;
+    }
+
     pub fn get_position(&self) -> (i16, i16) {
-        self.current_position.clone()
+        self.current_position
     }
 
-    pub fn new(
-        buffer: Vec<Vec<char>>,
-        current_position: (i16, i16),
-        last_position: (i16, i16),
-    ) -> Editor {
-        return Editor {
+    pub fn new(buffer: Vec<Vec<char>>,
+               current_position: (i16, i16),
+               last_position: (i16, i16)) -> Editor {
+        Editor {
             editor_mode: EditorMode::Explore,
+            selected: false,
             buffer,
             current_position,
             last_position,
-        };
+        }
     }
 }
