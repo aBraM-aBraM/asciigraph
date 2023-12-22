@@ -1,5 +1,6 @@
 use std::cmp::{max, min};
 
+#[derive(Debug)]
 pub struct Editor {
     current_position: (i16, i16),
     last_position: (i16, i16),
@@ -21,6 +22,9 @@ impl Editor {
 
     pub fn get_position(&self) -> (i16, i16) {
         self.current_position
+    }
+    pub fn get_last_position(&self) -> (i16, i16) {
+        self.last_position
     }
 
     pub fn new() -> Editor {
