@@ -1,36 +1,36 @@
 use std::cmp::{max, min};
+use vector2d::Vector2D;
 
 #[derive(Debug)]
 pub struct Editor {
-    current_position: (i16, i16),
-    last_position: (i16, i16),
+    current_position: Vector2D<i16>,
+    last_position: Vector2D<i16>,
 }
 
 impl Editor {
-    pub fn move_position(&mut self, offset: (i16, i16), borders: (i16, i16)) {
-        self.current_position.0 += offset.0;
-        self.current_position.1 += offset.1;
+    pub fn move_position(&mut self, offset: Vector2D<i16>, borders: Vector2D<i16>) {
+        self.current_position.x += offset.x;
+        self.current_position.y += offset.y;
 
-        self.current_position.0 = min(max(self.current_position.0, 0), borders.0);
-        self.current_position.1 = min(max(self.current_position.1, 0), borders.1);
+        self.current_position.x = min(max(self.current_position.x, 0), borders.x);
+        self.current_position.y = min(max(self.current_position.y, 0), borders.y);
     }
 
     pub fn set_last_position(&mut self) {
-        self.last_position.0 = self.current_position.0;
-        self.last_position.1 = self.current_position.1;
+        self.last_position = self.current_position;
     }
 
-    pub fn get_position(&self) -> (i16, i16) {
+    pub fn get_position(&self) -> Vector2D<i16> {
         self.current_position
     }
-    pub fn get_last_position(&self) -> (i16, i16) {
+    pub fn get_last_position(&self) -> Vector2D<i16> {
         self.last_position
     }
 
     pub fn new() -> Editor {
         Editor {
-            current_position: (0, 0),
-            last_position: (0, 0),
+            current_position: Vector2D::new(0, 0),
+            last_position: Vector2D::new(0, 0),
         }
     }
 }

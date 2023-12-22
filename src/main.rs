@@ -1,7 +1,6 @@
 use app::App;
-use crossterm;
+
 use crossterm::ExecutableCommand;
-use editor::Editor;
 use std::io;
 
 mod app;
@@ -16,7 +15,7 @@ fn main() {
         .unwrap();
     io::stdout().execute(crossterm::cursor::Hide).unwrap();
 
-    let terminal_size = crossterm::terminal::size().unwrap();
+    let _terminal_size = crossterm::terminal::size().unwrap();
 
     let mut app = App::new();
 
