@@ -1,67 +1,115 @@
-use anyhow::Result;
-use crossterm::event;
-use crossterm::event::Event::Key;
-use crossterm::event::{KeyCode, KeyModifiers};
-use ratatui::layout::Rect;
-use ratatui::prelude::{CrosstermBackend, Terminal};
-use ratatui::widgets::{Block, Borders, Paragraph, Tabs};
-use std::io::Stderr;
-use ratatui::{
-    style::Color,
-    widgets::{canvas::*, *},
-};
-use ratatui::style::Style;
+use crate::editor::Editor;
+use crossterm::ExecutableCommand;
+use std::io;
 use strum::IntoEnumIterator;
-use crate::editor::{Editor, EditorMode};
+use strum_macros::{Display, EnumIter};
 
 pub struct App {
-    pub should_quit: bool,
-    terminal: Terminal<CrosstermBackend<Stderr>>,
     editor: Editor,
+    editor_mode: EditorMode,
+    should_quit: bool,
+    selected: bool,
+    buffer: Vec<Vec<char>>,
+}
+
+#[repr(usize)]
+#[derive(EnumIter, Display, Copy, Clone, PartialEq)]
+pub enum EditorMode {
+    #[strum(serialize = "Explore (Ctrl+Q)")]
+    Explore,
+    #[strum(serialize = "Rectangle (Ctrl+W)")]
+    Rectangle,
+    #[strum(serialize = "Text (ctrl+E)")]
+    Text,
+    #[strum(serialize = "Line (ctrl+A)")]
+    Line,
+    #[strum(serialize = "Arrow (ctrl+S)")]
+    Arrow,
+    #[strum(serialize = "Quit (ctrl+C)")]
+    Quit,
+}
+
+pub fn write_to_screen(
+    position: (u16, u16),
+    char: char,
+    bg: crossterm::style::Color,
+    fg: crossterm::style::Color,
+) {
+    io::stdout()
+        .execute(crossterm::cursor::MoveTo(position.0, position.1))
+        .unwrap()
+        .execute(crossterm::style::SetForegroundColor(fg))
+        .unwrap()
+        .execute(crossterm::style::SetBackgroundColor(bg))
+        .unwrap()
+        .execute(crossterm::style::Print(char))
+        .unwrap()
+        .execute(crossterm::style::ResetColor)
+        .unwrap();
 }
 
 impl App {
-    pub fn new(should_quit: bool,
-               terminal: Terminal<CrosstermBackend<Stderr>>,
-               editor: Editor) -> App
-    {
+    pub fn new() -> App {
+        let terminal_size = crossterm::terminal::size().unwrap();
         App {
-            should_quit,
-            terminal,
-            editor,
+            editor: Editor::new(),
+            editor_mode: EditorMode::Explore,
+            should_quit: false,
+            selected: false,
+            buffer: vec![vec![' '; terminal_size.1 as usize]; terminal_size.0 as usize],
         }
     }
 
-    fn select(&mut self)
-    {
-        if self.editor.selected {} else {
+    fn borders(&self) -> (i16, i16) {
+        (self.buffer.len() as i16, self.buffer[0].len() as i16)
+    }
+
+    fn width(&self) -> usize {
+        self.buffer.len()
+    }
+    fn height(&self) -> usize {
+        self.buffer[0].len()
+    }
+
+    fn select(&mut self) {
+        if self.selected {
+        } else {
             self.editor.set_last_position();
         }
-        self.editor.selected = !self.editor.selected;
+        self.selected = !self.selected;
     }
 
-
-    pub fn update(&mut self) -> Result<()> {
-        if event::poll(std::time::Duration::from_millis(250))? {
-            if let Key(key) = event::read()? {
-                if key.kind == event::KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Esc => self.editor.editor_mode = EditorMode::Explore,
-                        KeyCode::Right => self.editor.move_position((1, 0)),
-                        KeyCode::Left => self.editor.move_position((-1, 0)),
-                        KeyCode::Down => self.editor.move_position((0, 1)),
-                        KeyCode::Up => self.editor.move_position((0, -1)),
-                        KeyCode::Char(' ') => self.select(),
-                        _ => {
-                            if key.modifiers & KeyModifiers::CONTROL == KeyModifiers::CONTROL {
-                                match key.code {
-                                    KeyCode::Char('r') => self.editor.editor_mode = EditorMode::Rectangle,
-                                    KeyCode::Char('t') => self.editor.editor_mode = EditorMode::Text,
-                                    KeyCode::Char('a') => self.editor.editor_mode = EditorMode::Arrow,
-                                    KeyCode::Char('l') => self.editor.editor_mode = EditorMode::Line,
-                                    KeyCode::Char('h') => self.editor.editor_mode = EditorMode::Help,
-                                    KeyCode::Char('q') => self.should_quit = true,
-                                    _ => {}
+    pub fn run(&mut self) {
+        loop {
+            use crossterm::event;
+            use event::Event::Key;
+            use event::{KeyCode, KeyModifiers};
+            self.draw_footer();
+            if event::poll(std::time::Duration::from_millis(250)).unwrap() {
+                if let Key(key) = event::read().unwrap() {
+                    if key.kind == event::KeyEventKind::Press {
+                        match key.code {
+                            KeyCode::Esc => self.editor_mode = EditorMode::Explore,
+                            KeyCode::Right => self.editor.move_position((1, 0), self.borders()),
+                            KeyCode::Left => self.editor.move_position((-1, 0), self.borders()),
+                            KeyCode::Down => self.editor.move_position((0, 1), self.borders()),
+                            KeyCode::Up => self.editor.move_position((0, -1), self.borders()),
+                            KeyCode::Char(' ') => self.select(),
+                            _ => {
+                                if key.modifiers & KeyModifiers::CONTROL == KeyModifiers::CONTROL {
+                                    match key.code {
+                                        KeyCode::Char('q') => {
+                                            self.editor_mode = EditorMode::Explore
+                                        }
+                                        KeyCode::Char('w') => {
+                                            self.editor_mode = EditorMode::Rectangle
+                                        }
+                                        KeyCode::Char('e') => self.editor_mode = EditorMode::Text,
+                                        KeyCode::Char('a') => self.editor_mode = EditorMode::Line,
+                                        KeyCode::Char('s') => self.editor_mode = EditorMode::Arrow,
+                                        KeyCode::Char('c') => break,
+                                        _ => {}
+                                    }
                                 }
                             }
                         }
@@ -69,73 +117,41 @@ impl App {
                 }
             }
         }
-        Ok(())
     }
 
-    fn draw_footer(&mut self) -> Result<()> {
-        self.terminal.draw(|f| {
-            let size = f.size();
-            let bottom = size.height - 1;
-            let style = Style::default().bg(Color::Magenta);
+    fn preview(&self) {}
 
-            f.render_widget(
-                Tabs::new(
-                    EditorMode::iter()
-                        .map(|variant| variant.to_string())
-                        .collect::<Vec<String>>(),
-                )
-                    .select(self.editor.editor_mode as usize)
-                    .style(style)
-                    .highlight_style(Style::default().bg(Color::Black)),
-                Rect::new(0, bottom, f.size().width - 1, 1),
-            );
+    fn draw_footer(&self) {
+        let mut tabs = EditorMode::iter()
+            .map(|variant| {
+                if variant == self.editor_mode {
+                    format!("* {}", variant.to_string())
+                } else {
+                    variant.to_string()
+                }
+            })
+            .collect::<Vec<String>>()
+            .join(" | ");
+        let position = self.editor.get_position();
+        let position_string = format!("pos: ({}, {})", position.0, position.1);
+        let terminal_size = crossterm::terminal::size().unwrap();
+        let spacing: String = std::iter::repeat(' ')
+            .take(terminal_size.0 as usize - tabs.len() - &position_string.len())
+            .collect();
+        tabs += spacing.as_str();
+        tabs += &position_string;
 
-            let pos = self.editor.get_position();
-            let pos_str = format!("pos ({}, {})", pos.0, pos.1);
-            let pos_str_length = pos_str.len();
-            f.render_widget(
-                Paragraph::new(pos_str).style(style),
-                Rect::new(
-                    f.size().width - pos_str_length as u16 - 1,
-                    bottom,
-                    pos_str_length as u16,
-                    1,
-                ),
-            );
-        })?;
-        Ok(())
-    }
-
-    fn draw_shape(&mut self) -> Result<()> {
-        self.terminal.draw(|f| {
-            f.render_widget(Canvas::default()
-                                .block(Block::default().title("Canvas").borders(Borders::ALL))
-                                .x_bounds([-180.0, 180.0])
-                                .y_bounds([-90.0, 90.0])
-                                .paint(|ctx| {
-                                    ctx.draw(&Map {
-                                        resolution: MapResolution::High,
-                                        color: Color::White,
-                                    });
-                                    // ctx.layer();
-                                    // ctx.draw(&Line {
-                                    //     x1: 0.0,
-                                    //     y1: 10.0,
-                                    //     x2: 10.0,
-                                    //     y2: 10.0,
-                                    //     color: Color::White,
-                                    // });
-                                }), Rect::new(0, 0,
-                                              (self.editor.width() - 1) as u16,
-                                              (self.editor.height() - 1) as u16),
-            )
-        })?;
-        Ok(())
-    }
-
-    pub fn draw(&mut self) -> Result<()> {
-        self.draw_footer()?;
-        // self.draw_shape()?;
-        Ok(())
+        use crossterm::style;
+        io::stdout()
+            .execute(crossterm::cursor::MoveTo(0, terminal_size.1 - 1))
+            .unwrap()
+            .execute(style::SetForegroundColor(style::Color::White))
+            .unwrap()
+            .execute(style::SetBackgroundColor(style::Color::DarkMagenta))
+            .unwrap()
+            .execute(style::Print(tabs))
+            .unwrap()
+            .execute(style::ResetColor)
+            .unwrap();
     }
 }

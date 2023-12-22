@@ -1,37 +1,27 @@
-use ratatui::backend::CrosstermBackend;
-use ratatui::Terminal;
-use app::{App};
+use app::App;
+use crossterm;
+use crossterm::ExecutableCommand;
 use editor::Editor;
+use std::io;
 
-mod editor;
 mod app;
+mod editor;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    crossterm::terminal::enable_raw_mode()?;
-    crossterm::execute!(std::io::stderr(), crossterm::terminal::EnterAlternateScreen)?;
+fn main() {
+    crossterm::terminal::enable_raw_mode().unwrap();
+    io::stdout()
+        .execute(crossterm::terminal::Clear(
+            crossterm::terminal::ClearType::All,
+        ))
+        .unwrap();
+    io::stdout().execute(crossterm::cursor::Hide).unwrap();
 
-    let terminal = Terminal::new(CrosstermBackend::new(std::io::stderr()))?;
-    let terminal_size = terminal.size()?;
+    let terminal_size = crossterm::terminal::size().unwrap();
 
-    let mut app = App::new(false,
-                           terminal,
-                           Editor::new(
-                               vec![vec![' '; terminal_size.height
-                                   as usize]; terminal_size.width as usize],
-                               (0, 0),
-                               (0, 0),
-                           ));
+    let mut app = App::new();
 
-    loop {
-        app.draw()?;
-        app.update()?;
-        if app.should_quit {
-            break;
-        }
-    }
+    app.run();
 
-    crossterm::execute!(std::io::stderr(), crossterm::terminal::LeaveAlternateScreen)?;
-    crossterm::terminal::disable_raw_mode()?;
-
-    Ok(())
+    crossterm::terminal::disable_raw_mode().unwrap();
+    io::stdout().execute(crossterm::cursor::Show).unwrap();
 }
