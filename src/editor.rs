@@ -27,9 +27,9 @@ impl Editor {
         self.last_position
     }
 
-    pub fn new() -> Editor {
+    pub fn new(start_position: Vector2D<i16>) -> Editor {
         Editor {
-            current_position: Vector2D::new(0, 0),
+            current_position: start_position,
             last_position: Vector2D::new(0, 0),
         }
     }
