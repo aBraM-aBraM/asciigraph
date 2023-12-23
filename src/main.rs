@@ -4,7 +4,6 @@ use crossterm::ExecutableCommand;
 use std::io;
 
 mod app;
-mod editor;
 
 fn main() {
     crossterm::terminal::enable_raw_mode().unwrap();

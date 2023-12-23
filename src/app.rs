@@ -1,23 +1,31 @@
-use crate::editor::Editor;
-
 use crossterm::{event, style, ExecutableCommand};
-use std::cmp::min;
+use std::cmp::{max, min};
+use std::fs::File;
 use std::io;
+use std::io::{stdin, Write};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};
 use vector2d::Vector2D;
 
-#[derive(Debug)]
 pub struct App {
-    editor: Editor,
+    last_position: Vector2D<i16>,
+    curr_position: Vector2D<i16>,
     editor_mode: EditorMode,
-    should_quit: bool,
     selected: bool,
+
+    should_quit: bool,
+    app_mode: AppMode,
     buffer: Vec<Vec<char>>,
 }
 
+enum AppMode {
+    Editor,
+    Command,
+}
+
 #[repr(usize)]
-#[derive(EnumIter, Display, Copy, Clone, PartialEq, Debug)]
+#[derive(EnumIter, Display, Copy, Clone, PartialEq)]
 pub enum EditorMode {
     #[strum(serialize = "Explore (Ctrl+Q)")]
     Explore,
@@ -27,7 +35,7 @@ pub enum EditorMode {
     Text,
     #[strum(serialize = "Line (ctrl+A)")]
     Line,
-    #[strum(serialize = "Arrow (ctrl+S)")]
+    #[strum(serialize = "Arrow (ctrl+D)")]
     Arrow,
     #[strum(serialize = "Quit (ctrl+C)")]
     Quit,
@@ -40,11 +48,11 @@ pub fn write_to_screen<T: std::fmt::Display>(position: Vector2D<i16>, object: T,
             position.y as u16,
         ))
         .unwrap()
-        .execute(crossterm::style::SetForegroundColor(fg))
+        .execute(style::SetForegroundColor(fg))
         .unwrap()
-        .execute(crossterm::style::Print(object))
+        .execute(style::Print(object))
         .unwrap()
-        .execute(crossterm::style::ResetColor)
+        .execute(style::ResetColor)
         .unwrap();
 }
 
@@ -56,15 +64,25 @@ impl App {
     pub fn new() -> App {
         let terminal_size = crossterm::terminal::size().unwrap();
         let terminal_width = terminal_size.0 as i16;
-        let terminal_height = (terminal_size.1 - 1) as i16; // leave space for footer
+        let terminal_height = (terminal_size.1 - 2) as i16; // leave space for footer
         App {
-            editor: Editor::new(Vector2D::new(terminal_width / 7,
-                                              terminal_height / 2)),
+            curr_position: Vector2D::new(terminal_width / 7, terminal_height / 2),
+            last_position: Vector2D::new(0, 0),
             editor_mode: EditorMode::Explore,
-            should_quit: false,
             selected: false,
+
+            should_quit: false,
+            app_mode: AppMode::Editor,
             buffer: vec![vec![' '; terminal_width as usize]; terminal_height as usize],
         }
+    }
+
+    fn move_position(&mut self, offset: Vector2D<i16>, borders: Vector2D<i16>) {
+        self.curr_position.x += offset.x;
+        self.curr_position.y += offset.y;
+
+        self.curr_position.x = min(max(self.curr_position.x, 0), borders.x);
+        self.curr_position.y = min(max(self.curr_position.y, 0), borders.y);
     }
 
     fn borders(&self) -> Vector2D<i16> {
@@ -72,8 +90,8 @@ impl App {
     }
 
     fn select(&mut self) {
-        let last_position = self.editor.get_last_position();
-        let curr_position = self.editor.get_position();
+        let last_position = self.last_position;
+        let curr_position = self.curr_position;
 
         if self.selected {
             let mut write_to_buff = |position: Vector2D<i16>, object: char| {
@@ -88,73 +106,99 @@ impl App {
                 _ => {}
             }
         } else {
-            self.editor.set_last_position();
+            self.last_position = self.curr_position;
         }
         self.selected = !self.selected;
     }
 
     pub fn run(&mut self) {
+        self.draw();
         while !self.should_quit {
-            self.draw();
             self.handle_input()
         }
     }
 
-    fn handle_input(&mut self) {
-        use event::Event::Key;
-        use event::{KeyCode, KeyModifiers};
-        if event::poll(std::time::Duration::from_millis(250)).unwrap() {
-            if let Key(key) = event::read().unwrap() {
-                if key.kind == event::KeyEventKind::Press {
+    fn handle_command_input(&mut self, key: KeyEvent) {
+        let mut filename_pos = Vector2D::new(0, self.borders().y);
+
+        crossterm::terminal::disable_raw_mode().unwrap();
+        io::stdout().
+            execute(crossterm::cursor::Show)
+            .unwrap()
+            .execute(crossterm::cursor::MoveTo(filename_pos.x as u16, filename_pos.y as u16))
+            .unwrap();
+
+        let mut readline = String::new();
+        stdin().read_line(&mut readline).unwrap();
+
+        let mut file = File::create(readline.trim()).unwrap();
+        for col in &self.buffer {
+            let buff_line: String = col.into_iter().collect();
+            file.write(format!("{}\n", buff_line).as_bytes()).unwrap();
+        }
+
+        crossterm::terminal::enable_raw_mode().unwrap();
+        io::stdout().execute(crossterm::cursor::Hide).unwrap();
+    }
+
+    fn handle_editor_input(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Right => self
+                .move_position(Vector2D::new(1, 0), self.borders()),
+            KeyCode::Left => self
+                .move_position(Vector2D::new(-1, 0), self.borders()),
+            KeyCode::Down => self
+                .move_position(Vector2D::new(0, 1), self.borders()),
+            KeyCode::Up => self
+                .move_position(Vector2D::new(0, -1), self.borders()),
+            KeyCode::Char(' ') => self.select(),
+            _ => {
+                if key.modifiers & KeyModifiers::CONTROL == KeyModifiers::CONTROL {
                     match key.code {
-                        KeyCode::Esc => self.editor_mode = EditorMode::Explore,
-                        KeyCode::Right => self
-                            .editor
-                            .move_position(Vector2D::new(1, 0), self.borders()),
-                        KeyCode::Left => self
-                            .editor
-                            .move_position(Vector2D::new(-1, 0), self.borders()),
-                        KeyCode::Down => self
-                            .editor
-                            .move_position(Vector2D::new(0, 1), self.borders()),
-                        KeyCode::Up => self
-                            .editor
-                            .move_position(Vector2D::new(0, -1), self.borders()),
-                        KeyCode::Char(' ') => self.select(),
-                        _ => {
-                            if key.modifiers & KeyModifiers::CONTROL == KeyModifiers::CONTROL {
-                                match key.code {
-                                    KeyCode::Char('q') => self.editor_mode = EditorMode::Explore,
-                                    KeyCode::Char('w') => self.editor_mode = EditorMode::Rectangle,
-                                    KeyCode::Char('e') => self.editor_mode = EditorMode::Text,
-                                    KeyCode::Char('a') => self.editor_mode = EditorMode::Line,
-                                    KeyCode::Char('s') => self.editor_mode = EditorMode::Arrow,
-                                    KeyCode::Char('c') => self.should_quit = true,
-                                    _ => {}
-                                }
-                            }
-                        }
+                        KeyCode::Char('q') => self.editor_mode = EditorMode::Explore,
+                        KeyCode::Char('w') => self.editor_mode = EditorMode::Rectangle,
+                        KeyCode::Char('e') => self.editor_mode = EditorMode::Text,
+                        KeyCode::Char('a') => self.editor_mode = EditorMode::Line,
+                        KeyCode::Char('d') => self.editor_mode = EditorMode::Arrow,
+                        _ => {}
                     }
                 }
             }
         }
     }
 
-    fn preview(&mut self) {
-        let last_position = self.editor.get_last_position();
-        let curr_position = self.editor.get_position();
+    fn handle_input(&mut self) {
+        if event::poll(std::time::Duration::from_millis(250)).unwrap() {
+            if let event::Event::Key(key) = event::read().unwrap() {
+                if key.kind == event::KeyEventKind::Press {
+                    if key.code == KeyCode::Char('c') {
+                        self.should_quit = true;
+                    }
+                    if key.code == KeyCode::Char('s') {
+                        self.app_mode = AppMode::Command;
+                    }
+                    match self.app_mode {
+                        AppMode::Editor => self.handle_editor_input(key),
+                        AppMode::Command => self.handle_command_input(key),
+                    }
+                    self.draw();
+                }
+            }
+        }
+    }
 
+    fn preview(&mut self) {
         if self.selected {
             match self.editor_mode {
                 EditorMode::Rectangle => App::write_rectangle(
-                    App::get_rect_vertices(last_position, curr_position),
+                    App::get_rect_vertices(self.last_position, self.curr_position),
                     &mut preview_write_to_screen,
                 ),
-                EditorMode::Explore => preview_write_to_screen(curr_position, "*"),
+                EditorMode::Explore => preview_write_to_screen(self.curr_position, "*"),
                 _ => {}
             }
         } else {
-            preview_write_to_screen(curr_position, "*");
+            preview_write_to_screen(self.curr_position, "*");
         }
     }
 
@@ -212,13 +256,13 @@ impl App {
             })
             .collect::<Vec<String>>()
             .join(" | ");
-        let position = self.editor.get_position();
+        let position = self.curr_position;
         let position_string = format!(
             "pos: ({}, {}), last_pos: ({}, {})",
             position.x,
             position.y,
-            self.editor.get_last_position().x,
-            self.editor.get_last_position().y
+            self.last_position.x,
+            self.last_position.y
         );
         let terminal_size = crossterm::terminal::size().unwrap();
         let spacing: String =
