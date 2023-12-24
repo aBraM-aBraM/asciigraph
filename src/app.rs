@@ -1,8 +1,9 @@
 use crossterm::{event, style, ExecutableCommand};
 use std::cmp::{max, min};
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::fs::File;
-use std::hash::{Hash, Hasher};
+use std::hash::{Hash};
 use std::io;
 use std::io::{stdin, Write};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -96,10 +97,6 @@ impl App {
     }
 
     fn select(&mut self) {
-        let last_position = self.last_position;
-        let curr_position = self.curr_position;
-
-
         if self.selected {
             let mut write_to_buff = |position: Vector2D<i16>, object: char| {
                 let buff = &mut self.buffer;
@@ -163,6 +160,11 @@ impl App {
                         KeyCode::Char('d') => self.editor_mode = EditorMode::Arrow,
                         KeyCode::Char('r') => self.line_alignment = !self.line_alignment,
                         _ => {}
+                    }
+                }
+                else if self.editor_mode == EditorMode::Text {
+                    if let KeyCode::Char(c) = key.code {
+                    self.buffer[self.curr_position.y as usize][self.curr_position.x as usize] = c;
                     }
                 }
             }
