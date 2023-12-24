@@ -84,9 +84,10 @@ impl App {
         }
     }
 
-    fn move_position(&mut self, offset: Vector2D<i16>, borders: Vector2D<i16>) {
+    fn move_position(&mut self, offset: Vector2D<i16>) {
         self.curr_position.x += offset.x;
         self.curr_position.y += offset.y;
+        let borders = self.borders();
 
         self.curr_position.x = min(max(self.curr_position.x, 0), borders.x);
         self.curr_position.y = min(max(self.curr_position.y, 0), borders.y);
@@ -142,14 +143,13 @@ impl App {
     fn handle_editor_input(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Right => self
-                .move_position(Vector2D::new(1, 0), self.borders()),
+                .move_position(Vector2D::new(1, 0)),
             KeyCode::Left => self
-                .move_position(Vector2D::new(-1, 0), self.borders()),
+                .move_position(Vector2D::new(-1, 0)),
             KeyCode::Down => self
-                .move_position(Vector2D::new(0, 1), self.borders()),
+                .move_position(Vector2D::new(0, 1)),
             KeyCode::Up => self
-                .move_position(Vector2D::new(0, -1), self.borders()),
-            KeyCode::Char(' ') => self.select(),
+                .move_position(Vector2D::new(0, -1)),
             _ => {
                 if key.modifiers & KeyModifiers::CONTROL == KeyModifiers::CONTROL {
                     match key.code {
@@ -161,10 +161,17 @@ impl App {
                         KeyCode::Char('r') => self.line_alignment = !self.line_alignment,
                         _ => {}
                     }
-                }
-                else if self.editor_mode == EditorMode::Text {
-                    if let KeyCode::Char(c) = key.code {
-                    self.buffer[self.curr_position.y as usize][self.curr_position.x as usize] = c;
+                } else {
+                    if self.editor_mode == EditorMode::Text {
+                        if let KeyCode::Char(c) = key.code {
+                            self.move_position(Vector2D::new(1, 0));
+                            self.buffer[self.curr_position.y as usize][self.curr_position.x as usize] = c;
+                        } else if key.code == KeyCode::Backspace {
+                            self.buffer[self.curr_position.y as usize][self.curr_position.x as usize] = ' ';
+                            self.move_position(Vector2D::new(-1, 0));
+                        }
+                    } else {
+                        if key.code == KeyCode::Char(' ') { self.select() }
                     }
                 }
             }
@@ -175,12 +182,15 @@ impl App {
         if event::poll(std::time::Duration::from_millis(250)).unwrap() {
             if let event::Event::Key(key) = event::read().unwrap() {
                 if key.kind == event::KeyEventKind::Press {
-                    if key.code == KeyCode::Char('c') {
-                        self.should_quit = true;
+                    if key.modifiers & KeyModifiers::CONTROL == KeyModifiers::CONTROL {
+                        if key.code == KeyCode::Char('c') {
+                            self.should_quit = true;
+                        }
+                        if key.code == KeyCode::Char('s') {
+                            self.app_mode = AppMode::Command;
+                        }
                     }
-                    if key.code == KeyCode::Char('s') {
-                        self.app_mode = AppMode::Command;
-                    }
+
                     match self.app_mode {
                         AppMode::Editor => self.handle_editor_input(key),
                         AppMode::Command => self.handle_command_input(key),
@@ -214,7 +224,7 @@ impl App {
     fn preview(&mut self) {
         if self.selected {
             App::editor_write(self.editor_mode, [self.curr_position, self.last_position], &mut preview_write_to_screen, self.line_alignment);
-        } else {
+        } else if self.editor_mode != EditorMode::Text {
             preview_write_to_screen(self.curr_position, "*");
         }
     }
