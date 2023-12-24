@@ -99,26 +99,13 @@ impl App {
         let last_position = self.last_position;
         let curr_position = self.curr_position;
 
+
         if self.selected {
             let mut write_to_buff = |position: Vector2D<i16>, object: char| {
                 let buff = &mut self.buffer;
                 buff[position.y as usize][position.x as usize] = object;
             };
-            match self.editor_mode {
-                EditorMode::Rectangle => App::write_rectangle(
-                    App::get_rect_vertices(last_position, curr_position),
-                    &mut write_to_buff,
-                ),
-                EditorMode::Line => App::write_line(
-                    App::get_line_vertices(last_position, curr_position, self.line_alignment),
-                    &mut write_to_buff,
-                ),
-                EditorMode::Arrow => App::write_arrow(
-                    App::get_line_vertices(last_position, curr_position, self.line_alignment),
-                    &mut write_to_buff,
-                ),
-                _ => {}
-            }
+            App::editor_write(self.editor_mode, [self.curr_position, self.last_position], &mut write_to_buff, self.line_alignment);
         } else {
             self.last_position = self.curr_position;
         }
@@ -202,24 +189,29 @@ impl App {
         }
     }
 
+    fn editor_write(editor_mode: EditorMode, vertices: [Vector2D<i16>; 2], write_func: &mut dyn FnMut(Vector2D<i16>, char), line_alignment: bool) {
+        let [current, last] = vertices;
+        match editor_mode {
+            EditorMode::Rectangle => App::write_rectangle(
+                App::get_rect_vertices(last, current),
+                write_func,
+            ),
+            EditorMode::Line => App::write_line(
+                App::get_line_vertices(last, current, line_alignment),
+                write_func,
+            ),
+            EditorMode::Arrow => App::write_arrow(
+                App::get_line_vertices(last, current, line_alignment),
+                write_func,
+            ),
+            EditorMode::Explore => write_func(current, '*'),
+            _ => {}
+        }
+    }
+
     fn preview(&mut self) {
         if self.selected {
-            match self.editor_mode {
-                EditorMode::Rectangle => App::write_rectangle(
-                    App::get_rect_vertices(self.last_position, self.curr_position),
-                    &mut preview_write_to_screen,
-                ),
-                EditorMode::Line => App::write_line(
-                    App::get_line_vertices(self.last_position, self.curr_position, self.line_alignment),
-                    &mut preview_write_to_screen,
-                ),
-                EditorMode::Arrow => App::write_arrow(
-                    App::get_line_vertices(self.last_position, self.curr_position, self.line_alignment),
-                    &mut preview_write_to_screen,
-                ),
-                EditorMode::Explore => preview_write_to_screen(self.curr_position, "*"),
-                _ => {}
-            }
+            App::editor_write(self.editor_mode, [self.curr_position, self.last_position], &mut preview_write_to_screen, self.line_alignment);
         } else {
             preview_write_to_screen(self.curr_position, "*");
         }
@@ -301,7 +293,7 @@ impl App {
         let dir_vec = Vector2D::new(dir_vec.x.signum(), dir_vec.y.signum());
         let dir_vec_hash = App::hash_vec2d(dir_vec);
 
-        if pointer_char_map.get(&dir_vec_hash).is_some(){
+        if pointer_char_map.get(&dir_vec_hash).is_some() {
             write_func(dir, pointer_char_map[&dir_vec_hash]);
         }
     }
