@@ -1,9 +1,7 @@
 use crossterm::{event, style, ExecutableCommand};
 use std::cmp::{max, min};
 use std::collections::HashMap;
-use std::fmt::Debug;
 use std::fs::File;
-use std::hash::{Hash};
 use std::io;
 use std::io::{stdin, Write};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -117,8 +115,8 @@ impl App {
         }
     }
 
-    fn handle_command_input(&mut self, key: KeyEvent) {
-        let mut filename_pos = Vector2D::new(0, self.borders().y);
+    fn handle_command_input(&mut self) {
+        let filename_pos = Vector2D::new(0, self.borders().y);
 
         crossterm::terminal::disable_raw_mode().unwrap();
         io::stdout().
@@ -132,8 +130,9 @@ impl App {
 
         let mut file = File::create(readline.trim()).unwrap();
         for col in &self.buffer {
-            let buff_line: String = col.into_iter().collect();
-            file.write(format!("{}\n", buff_line).as_bytes()).unwrap();
+            let buff_line: String = col.iter().collect();
+            assert_eq!(file.write(format!("{}\n", buff_line).as_bytes()).unwrap(), buff_line.len() + 1,
+                       "failed to save");
         }
 
         crossterm::terminal::enable_raw_mode().unwrap();
@@ -161,19 +160,15 @@ impl App {
                         KeyCode::Char('r') => self.line_alignment = !self.line_alignment,
                         _ => {}
                     }
-                } else {
-                    if self.editor_mode == EditorMode::Text {
-                        if let KeyCode::Char(c) = key.code {
-                            self.move_position(Vector2D::new(1, 0));
-                            self.buffer[self.curr_position.y as usize][self.curr_position.x as usize] = c;
-                        } else if key.code == KeyCode::Backspace {
-                            self.buffer[self.curr_position.y as usize][self.curr_position.x as usize] = ' ';
-                            self.move_position(Vector2D::new(-1, 0));
-                        }
-                    } else {
-                        if key.code == KeyCode::Char(' ') { self.select() }
+                } else if self.editor_mode == EditorMode::Text {
+                    if let KeyCode::Char(c) = key.code {
+                        self.move_position(Vector2D::new(1, 0));
+                        self.buffer[self.curr_position.y as usize][self.curr_position.x as usize] = c;
+                    } else if key.code == KeyCode::Backspace {
+                        self.buffer[self.curr_position.y as usize][self.curr_position.x as usize] = ' ';
+                        self.move_position(Vector2D::new(-1, 0));
                     }
-                }
+                } else if key.code == KeyCode::Char(' ') { self.select() }
             }
         }
     }
@@ -193,7 +188,7 @@ impl App {
 
                     match self.app_mode {
                         AppMode::Editor => self.handle_editor_input(key),
-                        AppMode::Command => self.handle_command_input(key),
+                        AppMode::Command => self.handle_command_input(),
                     }
                     self.draw();
                 }
@@ -257,7 +252,7 @@ impl App {
         vertices: [Vector2D<i16>; 4],
         write_func: &mut dyn FnMut(Vector2D<i16>, char),
     ) {
-        let [vertical, connector, horizontal, dir] = vertices;
+        let [vertical, connector, horizontal, _] = vertices;
 
 
         let corner_char_map = HashMap::from([
@@ -365,7 +360,7 @@ impl App {
         );
         let terminal_size = crossterm::terminal::size().unwrap();
         let spacing: String =
-            " ".repeat(terminal_size.0 as usize - tabs.len() - &position_string.len());
+            " ".repeat(terminal_size.0 as usize - tabs.len() - position_string.len());
         tabs += spacing.as_str();
         tabs += &position_string;
 
@@ -383,7 +378,7 @@ impl App {
     }
     fn draw_buffer(&self) {
         for (i, col) in self.buffer.iter().enumerate() {
-            let buff_line: String = col.into_iter().collect();
+            let buff_line: String = col.iter().collect();
             io::stdout()
                 .execute(crossterm::cursor::MoveTo(0, i as u16))
                 .unwrap()
