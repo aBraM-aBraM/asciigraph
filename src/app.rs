@@ -1,6 +1,8 @@
 use crossterm::{event, style, ExecutableCommand};
 use std::cmp::{max, min};
+use std::collections::HashMap;
 use std::fs::File;
+use std::hash::{Hash, Hasher};
 use std::io;
 use std::io::{stdin, Write};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -103,6 +105,10 @@ impl App {
                     App::get_rect_vertices(last_position, curr_position),
                     &mut write_to_buff,
                 ),
+                EditorMode::Line => App::write_line(
+                    App::get_line_vertices(last_position, curr_position, true),
+                    &mut write_to_buff,
+                ),
                 _ => {}
             }
         } else {
@@ -194,6 +200,10 @@ impl App {
                     App::get_rect_vertices(self.last_position, self.curr_position),
                     &mut preview_write_to_screen,
                 ),
+                EditorMode::Line => App::write_line(
+                    App::get_line_vertices(self.last_position, self.curr_position, true),
+                    &mut preview_write_to_screen,
+                ),
                 EditorMode::Explore => preview_write_to_screen(self.curr_position, "*"),
                 _ => {}
             }
@@ -221,6 +231,45 @@ impl App {
         write_func(bottom_left, '└');
     }
 
+    fn write_line(
+        vertices: [Vector2D<i16>; 3],
+        write_func: &mut dyn FnMut(Vector2D<i16>, char),
+    ) {
+        let [vertical, connector, horizontal] = vertices;
+
+        let hash_vec2d = |vector2d: Vector2D<i16>| -> i16 {
+            vector2d.x * 0x10 + vector2d.y // works only for normalized integer vectors
+        };
+
+        let corner_char_map = HashMap::from([
+            (hash_vec2d(Vector2D::new(1i16, 1i16)), '┌'),
+            (hash_vec2d(Vector2D::new(-1i16, 1i16)), '┐'),
+            (hash_vec2d(Vector2D::new(1i16, -1i16)), '└'),
+            (hash_vec2d(Vector2D::new(-1i16, -1i16)), '┘'),
+        ]);
+        let corner_vec = Vector2D::new((horizontal.x - connector.x).signum(),
+                                                  (vertical.y - connector.y).signum());
+        let col_vec = if corner_vec.x > 0 {
+            connector.x..horizontal.x
+        } else { horizontal.x..connector.x};
+        let row_vec = if corner_vec.y > 0 {
+            connector.y..vertical.y
+        } else { vertical.y..connector.y};
+
+
+        for col in col_vec {
+            write_func(Vector2D::new(col, connector.y), '─');
+        }
+        for row in row_vec {
+            write_func(Vector2D::new(connector.x, row), '│');
+        }
+
+        let corner_vec = hash_vec2d(corner_vec);
+        if corner_char_map.get(&corner_vec).is_some() {
+            write_func(connector, corner_char_map[&corner_vec]);
+        }
+    }
+
     fn get_rect_vertices(vertex1: Vector2D<i16>, vertex2: Vector2D<i16>) -> [Vector2D<i16>; 4] {
         let dimensions =
             Vector2D::new((vertex1.x - vertex2.x).abs(), (vertex1.y - vertex2.y).abs());
@@ -231,6 +280,16 @@ impl App {
         let bottom_left = anchor + Vector2D::new(0, dimensions.y);
 
         [top_left, top_right, bottom_right, bottom_left]
+    }
+
+    fn get_line_vertices(vertex1: Vector2D<i16>, vertex2: Vector2D<i16>, horizontal: bool) -> [Vector2D<i16>; 3]
+    {
+        // [vertical_vertex, connector, horizontal_vertex]
+        if horizontal {
+            [vertex2, Vector2D::new(vertex2.x, vertex1.y), vertex1]
+        } else {
+            [vertex1, Vector2D::new(vertex1.x, vertex2.y), vertex2]
+        }
     }
 
     fn draw(&mut self) {
