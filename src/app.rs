@@ -15,6 +15,7 @@ pub struct App {
     curr_position: Vector2D<i16>,
     editor_mode: EditorMode,
     selected: bool,
+    line_alignment: bool,
 
     should_quit: bool,
     app_mode: AppMode,
@@ -39,6 +40,8 @@ pub enum EditorMode {
     Line,
     #[strum(serialize = "Arrow (ctrl+D)")]
     Arrow,
+    #[strum(serialize = "Rotate Line/Arrow (ctrl+R)")]
+    Rotate,
     #[strum(serialize = "Quit (ctrl+C)")]
     Quit,
 }
@@ -72,6 +75,7 @@ impl App {
             last_position: Vector2D::new(0, 0),
             editor_mode: EditorMode::Explore,
             selected: false,
+            line_alignment: true,
 
             should_quit: false,
             app_mode: AppMode::Editor,
@@ -106,7 +110,11 @@ impl App {
                     &mut write_to_buff,
                 ),
                 EditorMode::Line => App::write_line(
-                    App::get_line_vertices(last_position, curr_position, true),
+                    App::get_line_vertices(last_position, curr_position, self.line_alignment),
+                    &mut write_to_buff,
+                ),
+                EditorMode::Arrow => App::write_arrow(
+                    App::get_line_vertices(last_position, curr_position, self.line_alignment),
                     &mut write_to_buff,
                 ),
                 _ => {}
@@ -166,6 +174,7 @@ impl App {
                         KeyCode::Char('e') => self.editor_mode = EditorMode::Text,
                         KeyCode::Char('a') => self.editor_mode = EditorMode::Line,
                         KeyCode::Char('d') => self.editor_mode = EditorMode::Arrow,
+                        KeyCode::Char('r') => self.line_alignment = !self.line_alignment,
                         _ => {}
                     }
                 }
@@ -201,7 +210,11 @@ impl App {
                     &mut preview_write_to_screen,
                 ),
                 EditorMode::Line => App::write_line(
-                    App::get_line_vertices(self.last_position, self.curr_position, true),
+                    App::get_line_vertices(self.last_position, self.curr_position, self.line_alignment),
+                    &mut preview_write_to_screen,
+                ),
+                EditorMode::Arrow => App::write_arrow(
+                    App::get_line_vertices(self.last_position, self.curr_position, self.line_alignment),
                     &mut preview_write_to_screen,
                 ),
                 EditorMode::Explore => preview_write_to_screen(self.curr_position, "*"),
@@ -231,30 +244,32 @@ impl App {
         write_func(bottom_left, '└');
     }
 
+
+    fn hash_vec2d(vector2d: Vector2D<i16>) -> i16 {
+        vector2d.x * 0x10 + vector2d.y // works only for normalized integer vectors
+    }
+
     fn write_line(
-        vertices: [Vector2D<i16>; 3],
+        vertices: [Vector2D<i16>; 4],
         write_func: &mut dyn FnMut(Vector2D<i16>, char),
     ) {
-        let [vertical, connector, horizontal] = vertices;
+        let [vertical, connector, horizontal, dir] = vertices;
 
-        let hash_vec2d = |vector2d: Vector2D<i16>| -> i16 {
-            vector2d.x * 0x10 + vector2d.y // works only for normalized integer vectors
-        };
 
         let corner_char_map = HashMap::from([
-            (hash_vec2d(Vector2D::new(1i16, 1i16)), '┌'),
-            (hash_vec2d(Vector2D::new(-1i16, 1i16)), '┐'),
-            (hash_vec2d(Vector2D::new(1i16, -1i16)), '└'),
-            (hash_vec2d(Vector2D::new(-1i16, -1i16)), '┘'),
+            (App::hash_vec2d(Vector2D::new(1i16, 1i16)), '┌'),
+            (App::hash_vec2d(Vector2D::new(-1i16, 1i16)), '┐'),
+            (App::hash_vec2d(Vector2D::new(1i16, -1i16)), '└'),
+            (App::hash_vec2d(Vector2D::new(-1i16, -1i16)), '┘'),
         ]);
         let corner_vec = Vector2D::new((horizontal.x - connector.x).signum(),
-                                                  (vertical.y - connector.y).signum());
+                                       (vertical.y - connector.y).signum());
         let col_vec = if corner_vec.x > 0 {
             connector.x..horizontal.x
-        } else { horizontal.x..connector.x};
+        } else { horizontal.x..connector.x };
         let row_vec = if corner_vec.y > 0 {
             connector.y..vertical.y
-        } else { vertical.y..connector.y};
+        } else { vertical.y..connector.y };
 
 
         for col in col_vec {
@@ -264,9 +279,30 @@ impl App {
             write_func(Vector2D::new(connector.x, row), '│');
         }
 
-        let corner_vec = hash_vec2d(corner_vec);
-        if corner_char_map.get(&corner_vec).is_some() {
-            write_func(connector, corner_char_map[&corner_vec]);
+        let corner_vec_hash = App::hash_vec2d(corner_vec);
+        if corner_char_map.get(&corner_vec_hash).is_some() {
+            write_func(connector, corner_char_map[&corner_vec_hash]);
+        }
+    }
+
+    fn write_arrow(
+        vertices: [Vector2D<i16>; 4],
+        write_func: &mut dyn FnMut(Vector2D<i16>, char),
+    ) {
+        App::write_line(vertices, write_func);
+        let pointer_char_map = HashMap::from([
+            (App::hash_vec2d(Vector2D::new(1i16, 0i16)), '►'),
+            (App::hash_vec2d(Vector2D::new(-1i16, 0i16)), '◄'),
+            (App::hash_vec2d(Vector2D::new(0i16, 1i16)), '▼'),
+            (App::hash_vec2d(Vector2D::new(0i16, -1i16)), '▲'),
+        ]);
+        let [_, connector, _, dir] = vertices;
+        let dir_vec = dir - connector;
+        let dir_vec = Vector2D::new(dir_vec.x.signum(), dir_vec.y.signum());
+        let dir_vec_hash = App::hash_vec2d(dir_vec);
+
+        if pointer_char_map.get(&dir_vec_hash).is_some(){
+            write_func(dir, pointer_char_map[&dir_vec_hash]);
         }
     }
 
@@ -282,13 +318,13 @@ impl App {
         [top_left, top_right, bottom_right, bottom_left]
     }
 
-    fn get_line_vertices(vertex1: Vector2D<i16>, vertex2: Vector2D<i16>, horizontal: bool) -> [Vector2D<i16>; 3]
+    fn get_line_vertices(vertex1: Vector2D<i16>, vertex2: Vector2D<i16>, horizontal: bool) -> [Vector2D<i16>; 4]
     {
-        // [vertical_vertex, connector, horizontal_vertex]
+        // [vertical_vertex, connector, horizontal_vertex, direction_vertex]
         if horizontal {
-            [vertex2, Vector2D::new(vertex2.x, vertex1.y), vertex1]
+            [vertex2, Vector2D::new(vertex2.x, vertex1.y), vertex1, vertex2]
         } else {
-            [vertex1, Vector2D::new(vertex1.x, vertex2.y), vertex2]
+            [vertex1, Vector2D::new(vertex1.x, vertex2.y), vertex2, vertex2]
         }
     }
 
